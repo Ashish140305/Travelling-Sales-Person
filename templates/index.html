@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RouteSmart Mumbai</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="truck-line.png" type="png"> -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='truck-line.png') }}" type="image/png">
+
+
+</head>
+
+<body>
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h1>RouteSmart Mumbai 🚚</h1>
+                <p>Search for a place or click the map to add stops.</p>
+            </div>
+
+            <div class="search-container">
+                <input type="text" id="search-input" placeholder="e.g., Gateway of India">
+                <button id="search-button">🔍</button>
+            </div>
+
+            <ul id="stops-list">
+            </ul>
+
+            <div id="route-info"></div>
+
+            <div class="button-container">
+                <button id="optimize-button">Optimize Route ✨</button>
+                <button id="clear-button">Clear Route 🗑️</button>
+            </div>
+        </div>
+        <div id="map">
+            <div id="spinner" class="spinner hidden"></div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- <script src="script.js"></script> -->
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+
+</html>
