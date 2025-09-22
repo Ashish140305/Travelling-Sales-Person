@@ -4,48 +4,104 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RouteSmart Mumbai</title>
+    <title>RouteSmart</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <!-- <link rel="stylesheet" href="style.css">
-    <link rel="icon" href="truck-line.png" type="png"> -->
+    <link rel="stylesheet"
+        href="https://unpkg.com/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylinedecorator.css" />
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="icon" href="{{ url_for('static', filename='truck-line.png') }}" type="image/png">
-
-
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 
 <body>
     <div class="app-container">
         <div class="sidebar">
             <div class="sidebar-header">
-                <h1>RouteSmart Mumbai 🚚</h1>
-                <p>Search for a place or click the map to add stops.</p>
+                <div>
+                    <h1>RouteSmart</h1>
+                    <p>Intelligent Routing, Simplified.</p>
+                </div>
+                <div class="theme-switcher">
+                    <input type="checkbox" id="theme-toggle" class="theme-toggle-checkbox">
+                    <label for="theme-toggle" class="theme-toggle-label">
+                        <div class="theme-toggle-switch"></div>
+                    </label>
+                </div>
             </div>
 
-            <div class="search-container">
-                <input type="text" id="search-input" placeholder="e.g., Gateway of India">
-                <button id="search-button">🔍</button>
+            <div class="controls-container">
+                <div class="search-container">
+                    <input type="text" id="search-input" placeholder="Search for a location...">
+                    <button id="search-button" title="Search">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                            class="feather feather-search">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                    </button>
+                </div>
+                <button id="locate-me-button" title="Locate Me">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        class="feather feather-crosshair">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="22" y1="12" x2="18" y2="12"></line>
+                        <line x1="6" y1="12" x2="2" y2="12"></line>
+                        <line x1="12" y1="6" x2="12" y2="2"></line>
+                        <line x1="12" y1="22" x2="12" y2="18"></line>
+                    </svg>
+                </button>
             </div>
+
 
             <ul id="stops-list">
             </ul>
 
-            <div id="route-info"></div>
+            <div id="route-info" class="hidden"></div>
 
             <div class="button-container">
-                <button id="optimize-button">Optimize Route ✨</button>
-                <button id="clear-button">Clear Route 🗑️</button>
+                <button id="optimize-button">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        class="feather feather-zap">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                    </svg>
+                    Optimize Route
+                </button>
+                <button id="clear-button">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        class="feather feather-trash-2">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        <line x1="10" y1="11" x2="10" y2="17"></line>
+                        <line x1="14" y1="11" x2="14" y2="17"></line>
+                    </svg>
+                    Clear Route
+                </button>
+                <button id="export-gpx-button" class="hidden">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                        class="feather feather-download">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Export GPX
+                </button>
             </div>
         </div>
         <div id="map">
             <div id="spinner" class="spinner hidden"></div>
+            <div id="hud" class="hidden"></div>
         </div>
     </div>
 
     <div id="notification" class="notification"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- <script src="script.js"></script> -->
+    <script src="https://unpkg.com/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylinedecorator.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 

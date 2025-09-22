@@ -1,170 +1,332 @@
 // --- Map Initialization ---
 const map = L.map('map').setView([19.0760, 72.8777], 11);
-// CORRECTED: Using the standard OpenStreetMap theme to match the light UI
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-}).addTo(map);
+
+// --- Tile Layers ---
+const streetLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+});
+
+const satelliteLabelsLayer = L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+    maxZoom: 20,
+    subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+    attribution: '&copy; Google'
+});
+
+streetLayer.addTo(map);
+
+const baseMaps = {
+    "Street": streetLayer,
+    "Satellite": satelliteLabelsLayer,
+};
+
+L.control.layers(baseMaps).addTo(map);
+
 // --- DOM Elements ---
 const spinner = document.getElementById('spinner');
 const searchInput = document.getElementById('search-input');
+const routeInfo = document.getElementById('route-info');
+const stopsList = document.getElementById('stops-list');
+const themeToggle = document.getElementById('theme-toggle');
+const locateMeButton = document.getElementById('locate-me-button');
+const exportGpxButton = document.getElementById('export-gpx-button');
+const hud = document.getElementById('hud');
+
 // --- State Management ---
 let stops = [];
 let markers = [];
 let routeLine;
-let temporaryMarker; // NEW: To hold the marker from a search
+let routeDecorator;
+let temporaryMarker;
+
 // --- Helper Functions ---
 function showSpinner() { spinner.classList.remove('hidden'); }
 function hideSpinner() { spinner.classList.add('hidden'); }
-// --- NEW: Custom Notification Function ---
+
 function showNotification(message) {
     const notification = document.getElementById('notification');
     notification.textContent = message;
     notification.classList.add('show');
-
-    // Hide the notification after 3 seconds
-    setTimeout(() => {
-        notification.classList.remove('show');
-    }, 3000);
+    setTimeout(() => notification.classList.remove('show'), 3000);
 }
-function updateSidebar() {
-    const stopsList = document.getElementById('stops-list');
-    stopsList.innerHTML = ''; // Clear the list
+
+async function updateSidebar() {
+    stopsList.innerHTML = '';
     if (stops.length === 0) {
         const li = document.createElement('li');
-        li.textContent = 'No stops added yet.';
-        li.style.color = '#b3b3b3';
+        li.innerHTML = `
+            <div style="text-align: center; padding: 20px; color: var(--text-secondary);">
+                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather feather-map-pin"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                <p>No stops added yet. Click on the map to add your first stop!</p>
+            </div>
+        `;
         stopsList.appendChild(li);
     } else {
-        stops.forEach((stop, index) => {
+        for (const [index, stop] of stops.entries()) {
             const li = document.createElement('li');
-            li.textContent = `Stop ${index + 1}: (${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)})`;
+            const stopInfo = document.createElement('div');
+            stopInfo.className = 'stop-info';
+            const stopName = document.createElement('span');
+            stopName.className = 'stop-name';
+            stopName.textContent = stop.name ? `Stop ${index + 1}: ${stop.name}` : `Stop ${index + 1}`;
+            const stopCoords = document.createElement('span');
+            stopCoords.className = 'stop-coords';
+            stopCoords.textContent = `(${stop.lat.toFixed(4)}, ${stop.lng.toFixed(4)})`;
+            stopInfo.appendChild(stopName);
+            stopInfo.appendChild(stopCoords);
+            const removeBtn = document.createElement('button');
+            removeBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-x"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+            removeBtn.className = 'remove-stop-btn';
+            removeBtn.title = 'Remove this stop';
+            removeBtn.onclick = () => removeStop(index);
+            li.appendChild(stopInfo);
+            li.appendChild(removeBtn);
             stopsList.appendChild(li);
-        });
+        }
     }
 }
 
-function addStop(latlng) {
-    stops.push(latlng);
-    const marker = L.marker(latlng).addTo(map);
-    markers.push(marker);
+async function getStopName(lat, lng) {
+    try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18`);
+        const data = await response.json();
+        const { road, neighbourhood, suburb, city, town, state } = data.address;
+        return road || neighbourhood || suburb || city || town || state || 'Unknown Location';
+    } catch (error) {
+        return 'Unknown Location';
+    }
+}
+
+function createNumberedMarker(latlng, number) {
+    const marker = L.marker(latlng, {
+        draggable: true,
+        icon: L.divIcon({
+            className: 'leaflet-div-icon',
+            html: `<span>${number}</span>`,
+            iconSize: [24, 24]
+        })
+    });
+
+    marker.on('dragend', function (event) {
+        const newLatLng = event.target.getLatLng();
+        const markerIndex = markers.indexOf(event.target);
+        stops[markerIndex].lat = newLatLng.lat;
+        stops[markerIndex].lng = newLatLng.lng;
+
+        getStopName(newLatLng.lat, newLatLng.lng).then(name => {
+            stops[markerIndex].name = name;
+            updateSidebar();
+        });
+
+        if (stops.length > 1) {
+            drawRoute(stops);
+        }
+    });
+
+    return marker;
+}
+
+function updateMarkers() {
+    markers.forEach(marker => map.removeLayer(marker));
+    markers = [];
+    stops.forEach((stop, index) => {
+        const newMarker = createNumberedMarker(stop, index + 1);
+        newMarker.addTo(map);
+        markers.push(newMarker);
+    });
+}
+
+async function addStop(latlng) {
+    const name = await getStopName(latlng.lat, latlng.lng);
+    stops.push({ ...latlng, name });
+    updateMarkers();
     updateSidebar();
+}
+
+function removeStop(index) {
+    stops.splice(index, 1);
+    updateMarkers();
+    updateSidebar();
+    if (stops.length > 1) {
+        optimizeRoute();
+    } else {
+        if (routeLine) map.removeLayer(routeLine);
+        if (routeDecorator) map.removeLayer(routeDecorator);
+        routeInfo.classList.add('hidden');
+        exportGpxButton.classList.add('hidden');
+        hud.classList.add('hidden');
+    }
 }
 
 function drawRoute(route) {
     if (routeLine) map.removeLayer(routeLine);
+    if (routeDecorator) map.removeLayer(routeDecorator);
     const latlngs = route.map(s => [s.lat, s.lng]);
-    latlngs.push(latlngs[0]); // Complete the loop
-    routeLine = L.polyline(latlngs, { color: '#1DB954', weight: 4 }).addTo(map);
+    latlngs.push(latlngs[0]);
+    routeLine = L.polyline(latlngs, { color: '#4a90e2', weight: 5, opacity: 0.8 }).addTo(map);
+    routeDecorator = L.polylineDecorator(routeLine, {
+        patterns: [
+            { offset: '10%', repeat: '20%', symbol: L.Symbol.arrowHead({ pixelSize: 15, pathOptions: { fillOpacity: 1, weight: 0, color: '#4a90e2' } }) }
+        ]
+    }).addTo(map);
     map.fitBounds(routeLine.getBounds(), { padding: [50, 50] });
+
+    if (route.length > 1) {
+        hud.textContent = `Next stop: ${route[1].name}`;
+        hud.classList.remove('hidden');
+    }
 }
 
-// --- NEW: Clear Route Function ---
 function clearRoute() {
-    // Clear data arrays
     stops = [];
-
-    // Clear visuals from the map
-    markers.forEach(marker => map.removeLayer(marker));
-    markers = [];
+    updateMarkers();
     if (routeLine) map.removeLayer(routeLine);
-
-    // NEW: Display the route distance
-    const routeInfo = document.getElementById('route-info');
-    routeInfo.textContent = ``;
-    // Reset sidebar
+    if (routeDecorator) map.removeLayer(routeDecorator);
+    routeInfo.classList.add('hidden');
+    exportGpxButton.classList.add('hidden');
+    hud.classList.add('hidden');
     updateSidebar();
-
-    // Reset map view
     map.setView([19.0760, 72.8777], 11);
 }
 
-// --- NEW/UPDATED: Search Location Function ---
 async function searchLocation() {
     const query = searchInput.value;
     if (!query) return;
-
     showSpinner();
-    // NEW: Clear any previous temporary marker
-    if (temporaryMarker) {
-        map.removeLayer(temporaryMarker);
-    }
-
+    if (temporaryMarker) map.removeLayer(temporaryMarker);
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
-
     try {
         const response = await fetch(url);
         const data = await response.json();
-
         if (data && data.length > 0) {
-            const result = data[0];
-            const latlng = { lat: parseFloat(result.lat), lng: parseFloat(result.lon) };
+            const { lat, lon, display_name } = data[0];
+            const latlng = { lat: parseFloat(lat), lng: parseFloat(lon) };
             map.setView(latlng, 14);
-
-            // NEW: Add a temporary, distinct marker instead of adding to the route
-            temporaryMarker = L.marker(latlng, {
-                icon: L.icon({ // Custom icon for the temporary marker
-                    iconUrl: 'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-gold.png',
-                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-                    iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
-                })
-            }).addTo(map);
-
-            temporaryMarker.bindPopup("<b>Location Found!</b><br>Click here to add to route.").openPopup();
-            temporaryMarker.on('click', () => addStop(latlng));
-
+            temporaryMarker = L.marker(latlng).addTo(map)
+                .bindPopup(`<b>${display_name}</b><br>Click on the map to add a stop.`)
+                .openPopup();
             searchInput.value = '';
         } else {
             showNotification('Location not found.');
         }
     } catch (error) {
-        // ... (error handling)
+        showNotification('Error searching for location.');
     } finally {
         hideSpinner();
     }
 }
 
-// UPDATED: The optimizeRoute function now displays the distance
 async function optimizeRoute() {
     if (stops.length < 2) {
-        showNotification("Please add at least 2 stops to optimize.");
+        showNotification("Add at least 2 stops to optimize.");
         return;
     }
-
     showSpinner();
     try {
-        const response = await fetch('http://127.0.0.1:5000/api/optimize-route', { // Ensure URL is correct
+        const response = await fetch('/api/optimize-route', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ stops: stops })
+            body: JSON.stringify({ stops: stops.map(({ name, ...rest }) => rest) })
         });
         const data = await response.json();
-
-        // ... (code to reorder and redraw markers) ...
-
+        stops = data.optimized_route.map(optStop => stops.find(s => s.lat === optStop.lat && s.lng === optStop.lng));
+        updateMarkers();
         updateSidebar();
         drawRoute(stops);
-
-        // NEW: Display the route distance
-        const routeInfo = document.getElementById('route-info');
-        // A rough conversion from lat/lon degrees to km. Replace with a real API for accuracy.
         const distanceInKm = data.total_distance * 111.32;
-        routeInfo.textContent = `Optimized Route Distance: ${distanceInKm.toFixed(2)} km`;
+        const averageSpeedKmph = 40;
+        const timeInHours = distanceInKm / averageSpeedKmph;
+        const hours = Math.floor(timeInHours);
+        const minutes = Math.round((timeInHours - hours) * 60);
 
+        routeInfo.innerHTML = `
+            <div>Optimized Route</div>
+            <div class="route-meta">
+                <span><strong>Distance:</strong> ${distanceInKm.toFixed(2)} km</span>
+                <span><strong>Time:</strong> ${hours}h ${minutes}m</span>
+            </div>
+        `;
+        routeInfo.classList.remove('hidden');
+        exportGpxButton.classList.remove('hidden');
     } catch (error) {
-        // ... (error handling)
+        showNotification('Error optimizing route.');
     } finally {
         hideSpinner();
     }
 }
+
+function exportGPX() {
+    let gpxContent = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="RouteSmart" xmlns="http://www.topografix.com/GPX/1/1">
+<metadata><name>Optimized Route</name></metadata>
+<trk><name>Optimized Route</name><trkseg>`;
+
+    stops.forEach(stop => {
+        gpxContent += `<trkpt lat="${stop.lat}" lon="${stop.lng}"><name>${stop.name}</name></trkpt>`;
+    });
+
+    gpxContent += `</trkseg></trk></gpx>`;
+
+    const blob = new Blob([gpxContent], { type: 'application/gpx+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'route.gpx';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// --- Theme Management ---
+function applyTheme(isDark) {
+    if (isDark) {
+        document.body.classList.add('dark-mode');
+    } else {
+        document.body.classList.remove('dark-mode');
+    }
+}
+
+themeToggle.addEventListener('change', () => {
+    const isDark = themeToggle.checked;
+    localStorage.setItem('darkMode', isDark);
+    applyTheme(isDark);
+});
+
+locateMeButton.addEventListener('click', () => {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(position => {
+            const latlng = { lat: position.coords.latitude, lng: position.coords.longitude };
+            map.setView(latlng, 14);
+            L.marker(latlng).addTo(map).bindPopup("<b>You are here!</b>").openPopup();
+        }, () => {
+            showNotification('Could not retrieve your location.');
+        });
+    } else {
+        showNotification('Geolocation is not supported by your browser.');
+    }
+});
+
+// Load theme on startup
+document.addEventListener('DOMContentLoaded', () => {
+    const savedTheme = localStorage.getItem('darkMode') === 'true';
+    themeToggle.checked = savedTheme;
+    applyTheme(savedTheme);
+});
+
 // --- Event Listeners ---
-map.on('click', (e) => addStop(e.latlng));
+map.on('click', (e) => {
+    if (temporaryMarker) {
+        map.removeLayer(temporaryMarker);
+        temporaryMarker = null;
+    }
+    addStop(e.latlng);
+});
 document.getElementById('optimize-button').addEventListener('click', optimizeRoute);
-document.getElementById('clear-button').addEventListener('click', clearRoute); // NEW
-document.getElementById('search-button').addEventListener('click', searchLocation); // NEW
-searchInput.addEventListener('keypress', function (e) { // NEW: Allow 'Enter' to search
+document.getElementById('clear-button').addEventListener('click', clearRoute);
+document.getElementById('search-button').addEventListener('click', searchLocation);
+searchInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') searchLocation();
 });
+exportGpxButton.addEventListener('click', exportGPX);
 
 
 // --- Initial UI Update ---
-updateSidebar(); // Show initial "No stops" message
+updateSidebar();
